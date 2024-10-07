@@ -37,10 +37,6 @@ class BackupServiceProvider extends PackageServiceProvider
     public function packageBooted()
     {
         $this->app['events']->subscribe(EventHandler::class);
-
-        if (EncryptBackupArchive::shouldEncrypt()) {
-            Event::listen(BackupZipWasCreated::class, EncryptBackupArchive::class);
-        }
     }
 
     public function packageRegistered()

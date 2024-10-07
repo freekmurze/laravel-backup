@@ -78,7 +78,6 @@ it('can backup using relative path', function () {
 
     $testFiles = [
         '.dotfile',
-        'archive.zip',
         '1Mb.file',
         'directory1/',
         'directory1/directory1/',
@@ -358,8 +357,73 @@ it('compresses the database dump', function () {
     app()['db']->disconnect();
 });
 
+it('keeps archive unencrypted without password', function () {
+    config()->set('backup.backup.password', null);
+    config()->set('backup.backup.source.files.include', [$this->getStubDirectory()]);
+    config()->set('backup.backup.source.files.relative_path', $this->getStubDirectory());
+
+    $this->artisan('backup:run --only-files')->assertExitCode(0);
+    Storage::disk('local')->assertExists($this->expectedZipPath);
+
+    $zip = new ZipArchive();
+    $zip->open(Storage::disk('local')->path($this->expectedZipPath));
+
+    $this->assertEncryptionMethod($zip, ZipArchive::EM_NONE);
+
+    $this->assertTrue($zip->extractTo(Storage::disk('local')->path('temp/extraction')));
+    $this->assertValidExtractedFiles();
+
+    $zip->close();
+});
+
+/**
+ * @param int $algorithm
+ */
+it('encrypts archive with password', function (int $algorithm) {
+    config()->set('backup.backup.password', $this->fakePassword());
+    config()->set('backup.backup.encryption', $algorithm);
+    config()->set('backup.backup.source.files.include', [$this->getStubDirectory()]);
+    config()->set('backup.backup.source.files.relative_path', $this->getStubDirectory());
+
+    $this->artisan('backup:run --only-files')->assertExitCode(0);
+
+    Storage::disk('local')->assertExists($this->expectedZipPath);
+
+    $zip = new ZipArchive();
+    $zip->open(Storage::disk('local')->path($this->expectedZipPath));
+
+    $this->assertEncryptionMethod($zip, $algorithm);
+
+    $zip->setPassword($this->fakePassword());
+    $this->assertTrue($zip->extractTo(Storage::disk('local')->path('temp/extraction')));
+    $this->assertValidExtractedFiles();
+
+    $zip->close();
+})->with([
+    [ZipArchive::EM_AES_128],
+    [ZipArchive::EM_AES_192],
+    [ZipArchive::EM_AES_256],
+]);
+
+it('can not open encrypted archive without password', function () {
+    config()->set('backup.backup.password', $this->fakePassword());
+
+    $this->artisan('backup:run --only-files')->assertExitCode(0);
+
+    Storage::disk('local')->assertExists($this->expectedZipPath);
+
+    $zip = new ZipArchive();
+    $zip->open(Storage::disk('local')->path($this->expectedZipPath));
+
+    $this->assertEncryptionMethod($zip, ZipArchive::EM_AES_256);
+
+    expect($zip->extractTo(Storage::disk('local')->path('temp/extraction')))->toBeFalse();
+
+    $zip->close();
+});
+
 it('will encrypt backup when notifications are disabled', function () {
-    config()->set('backup.backup.password', '24dsjF6BPjWgUfTu');
+    config()->set('backup.backup.password', $this->fakePassword());
     config()->set('backup.backup.source.databases', ['db1']);
 
     $this->artisan('backup:run --disable-notifications --only-db --db-name=db1 --only-to-disk=local')->assertExitCode(0);

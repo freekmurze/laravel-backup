@@ -242,4 +242,25 @@ abstract class TestCase extends Orchestra
 
         return $this;
     }
+
+    public function assertEncryptionMethod(ZipArchive $zip, int $algorithm): void
+    {
+        foreach (range(0, $zip->numFiles - 1) as $i) {
+            expect($zip->statIndex($i)['encryption_method'])->toBe($algorithm);
+        }
+    }
+
+    public function assertValidExtractedFiles(): void
+    {
+        foreach (['file1.txt', 'file2.txt', 'file3.txt'] as $filename) {
+            $filepath = 'temp/extraction/'.$filename;
+            Storage::disk('local')->assertExists($filepath);
+            expect(Storage::disk('local')->get($filepath))->toBe('lorum ipsum');
+        }
+    }
+
+    public function fakePassword(): string
+    {
+        return '24dsjF6BPjWgUfTu';
+    }
 }

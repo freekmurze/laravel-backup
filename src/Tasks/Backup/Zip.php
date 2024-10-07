@@ -14,6 +14,8 @@ class Zip
 
     protected string $pathToZip;
 
+    protected ?Encryption $encryption = null;
+
     public static function createForManifest(Manifest $manifest, string $pathToZip): self
     {
         $relativePath = config('backup.backup.source.files.relative_path') ?
@@ -26,6 +28,8 @@ class Zip
         foreach ($manifest->files() as $file) {
             $zip->add($file, self::determineNameOfFileInZip($file, $pathToZip, $relativePath));
         }
+
+        $zip->encrypt();
 
         $zip->close();
 
@@ -87,6 +91,11 @@ class Zip
         $this->zipFile->close();
     }
 
+    public function setPassword(string $password): void
+    {
+        $this->zipFile->setPassword($password);
+    }
+
     public function add(string|iterable $files, ?string $nameInZip = null): self
     {
         if (is_array($files)) {
@@ -125,5 +134,45 @@ class Zip
     public function count(): int
     {
         return $this->fileCount;
+    }
+
+    public function encrypt()
+    {
+        $this->loadEncryption();
+
+        if ($this->getEncryption()) {
+            $this->setPassword($this->getEncryption()->getPassword());
+
+            foreach (range(0, $this->zipFile->numFiles - 1) as $i) {
+                $this->zipFile->setEncryptionIndex($i, $this->getEncryption()->getMethod());
+            }
+        }
+    }
+
+    public function getEncryption(): ?Encryption
+    {
+        return $this->encryption;
+    }
+
+    public function loadEncryption()
+    {
+        $password = config('backup.backup.password');
+        $method = config('backup.backup.encryption');
+
+        if ($method === 'default') {
+            $method = defined("\ZipArchive::EM_AES_256")
+                ? ZipArchive::EM_AES_256
+                : null;
+        }
+
+        if ($password === null) {
+            return false;
+        }
+
+        if (! is_int($method)) {
+            return false;
+        }
+
+        $this->encryption = new Encryption($password, $method);
     }
 }
